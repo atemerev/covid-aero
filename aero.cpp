@@ -1,5 +1,3 @@
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "bugprone-reserved-identifier"
 
 #include<cmath>
 #include<random>
@@ -53,8 +51,25 @@ const T MAX_VELOCITY = 1.3; // m/s
 
 constexpr int NUM_PARTICLES = 1000;
 constexpr T DENSITY = 1000.; // kg/m^3
-constexpr T MEAN_RADIUS = 1e-5; // m
-std::lognormal_distribution<T> dist(std::log(MEAN_RADIUS), std::log(8.4));
+
+constexpr T MEAN_RADIUS_B = 1.2e-6; // m
+constexpr T DEVIATION_B = 8.4;
+constexpr T MEAN_RADIUS_L = 4e-5; // m
+constexpr T DEVIATION_L = 8.4;
+constexpr T MEAN_RADIUS_O = 1e-5; // m
+constexpr T DEVIATION_O = 8.4;
+
+constexpr double prob_B = 0.2;
+constexpr double prob_L = 0.4;
+
+//std::lognormal_distribution<T> dist(std::log(MEAN_RADIUS), std::log(8.4));
+
+// distributions for the BLO model
+
+std::uniform_real_distribution<double> uni(0, 1);
+std::lognormal_distribution<T> dist_B(std::log(MEAN_RADIUS_B), std::log(DEVIATION_B));
+std::lognormal_distribution<T> dist_L(std::log(MEAN_RADIUS_L), std::log(DEVIATION_L));
+std::lognormal_distribution<T> dist_O(std::log(MEAN_RADIUS_O), std::log(DEVIATION_O));
 
 template<typename T, typename _DESCRIPTOR>
 class TurbulentVelocity3D : public AnalyticalF3D<T, T> {
@@ -243,7 +258,7 @@ void getResults(SuperLattice3D<T, DESCRIPTOR> &sLattice,
                 SuperGeometry3D<T> &superGeometry, Timer<T> &timer) {
 
     OstreamManager clout(std::cout, "getResults");
-    SuperVTMwriter3D<T> vtmWriter("nozzle3d");
+    SuperVTMwriter3D<T> vtmWriter("aero");
 
     if (iT == 0) {
         // Writes the geometry, cuboid no. and rank no. as vti file for visualization
@@ -294,17 +309,6 @@ int main(int argc, char *argv[]) {
     // display messages from every single mpi process
     // clout.setMultiOutput(true);
 
-/*
-    UnitConverterFromResolutionAndLatticeVelocity<T, DESCRIPTOR> const converter(
-            int{N},         // resolution: number of voxels per charPhysL
-            (T) 0.53,
-            (T) BLOCK_SIZE, // charPhysLength: reference length of simulation geometry
-            (T) 0.8,          // charPhysVelocity: maximal/highest expected velocity during simulation in __m / s__
-            (T) 1.5e-5,   // physViscosity: physical kinematic viscosity in __m^2 / s__
-            (T) 1.25        // physDensity: physical DENSITY in __kg / m^3__
-    );
-*/
-
     UnitConverter<T, DESCRIPTOR> const converter(
             (T) BLOCK_SIZE / N,
             (T) BLOCK_SIZE / (M * N),
@@ -317,7 +321,7 @@ int main(int argc, char *argv[]) {
     // Prints the converter log as console output
     converter.print();
     // Writes the converter log in a file
-    converter.write("nozzle3d");
+    converter.write("aero");
 
     T voxel = converter.getConversionFactorLength();
 
@@ -386,6 +390,10 @@ int main(int argc, char *argv[]) {
     IndicatorCylinder3D<T> inletCylinder(extendInlet, originInlet, INLET_RADIUS);
 
     for (int i = 0; i < NUM_PARTICLES; i++) {
+
+        double uni_random = uni(generator);
+        // choosing the B/L/O distribution from the BLO model modal probabilities
+        std::lognormal_distribution<T> dist = uni_random < prob_B ? dist_B : uni_random < prob_L ? dist_L : dist_O;
         T radius = dist(generator);
         clout << "Particle: " << radius << std::endl;
         T mass = 4. / 3. * M_PI * std::pow(radius, 3) * DENSITY;
